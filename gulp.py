@@ -7,6 +7,7 @@ class EventListener(sublime_plugin.EventListener):
         self.done = False
         self.count = 0
         self.cp = None
+        self.tasks = ['build-all','build','gopro','godev','golocal','']
 
     # 成员方法的首参是self，代表类本身
     # 调用时只需从第二个参数开始传入
@@ -27,29 +28,32 @@ class EventListener(sublime_plugin.EventListener):
                     sublime.status_message('命令执行失败')
                 self.count = 0
             else:
-                msg = '正在' + path + '运行 gulp build-all && gulp golocal | 用时 ' + str(self.count * 250 / 1000) + 's'
-                sublime.status_message(msg)
                 sublime.set_timeout(lambda: self.rightAfterSave(view), 250)
                 self.count = self.count + 1
         else:
-            sublime.status_message('成功在' + path + '运行 gulp build-all && gulp golocal | 耗时 ' + str(self.count * 250 / 1000) + 's')
+            if self.gulpTask == '':
+                sublime.status_message('没有执行任何gulp任务')
+            else:
+                sublime.status_message('成功在' + path + '运行 gulp ' + self.gulpTask + ' | 耗时 ' + str(self.count * 250 / 1000) + 's')
 
     def on_post_save_async(self, view):
         # sublime将会打开子进程A，异步执行以下操作
+        def execGulpTask(index):
+            self.gulpTask = self.tasks[index]
+            if not self.gulpTask == '':
+                sublime.status_message('正在执行gulp ' + self.gulpTask + '任务')
+                # 打开A的子进程B
+                self.cp = subprocess.Popen(['gulp', self.gulpTask], shell=True, cwd=path, stdout=subprocess.PIPE)
+                # 阻塞A，等待B
+                self.cp.wait()
+            self.done = True
         path = self.getGulpRoot(sublime.View.file_name(view))
         if not path:
             sublime.status_message('非Gulp项目，无需执行Gulp命令')
         else:
             self.rightAfterSave(view)
-            # 打开A的子进程B
-            self.cp = subprocess.Popen(['gulp', 'build-all'], shell=True, cwd=path, stdout=subprocess.PIPE)
-            # 阻塞A，等待B
-            self.cp.wait()
-            # 打开A的子进程B
-            self.cp = subprocess.Popen(['gulp', 'golocal'], shell=True, cwd=path, stdout=subprocess.PIPE)
-            # 阻塞A，等待B
-            self.cp.wait()
-            self.done = True
+            sublime.Window.show_quick_panel(sublime.active_window(), self.tasks, execGulpTask)
+            # sublime.Window.show_input_panel(sublime.active_window(), '请输入要执行的gulp命令', 'build-all', execGulpTask, None, None)
 
     def getGulpRoot(self, path):
         # os.path.isdir 判断是否目录
